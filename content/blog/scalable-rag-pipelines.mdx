@@ -1,0 +1,52 @@
+---
+title: "Building Highly Scalable RAG Pipelines for Production"
+date: "2026-03-01"
+excerpt: "Retrieval-Augmented Generation (RAG) is easy to prototype but hard to productionize. Here's how to structure your vector embeddings and chunking strategies to scale efficiently."
+tags: ["LLM", "RAG", "Engineering"]
+---
+
+Retrieval-Augmented Generation (RAG) has transformed from an experimental concept into a foundational architecture for Enterprise AI. While building a naive pipeline in LangChain takes five lines of code, pushing that same pipeline to production with massive scale, low latency, and zero hallucinations is a completely different challenge.
+
+In this deep dive, I'll walk you through the structural changes needed to move a prototype RAG to production.
+
+## 1. The Naive Approach
+A typical GenAI engineer starts with the simplest setup:
+- Load the PDF using a naive loader.
+- Split blindly by 500 tokens.
+- Embed using `text-embedding-ada-002`.
+- Query using top-k=3.
+
+```python
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+loader = PyPDFLoader("document.pdf")
+pages = loader.load_and_split()
+```
+
+The problem? You've destroyed the semantic context of your document by arbitrarily cutting sentences in half.
+
+## 2. Structural/Semantic Chunking
+Instead of recursive character splitting, **semantic chunking** aligns the AI's understanding to the author's intentional structure.
+
+When I built the **Feed Gap Analysis Engine** at Amar Ujala, we had to process tens of thousands of dynamic RSS articles simultaneously. If we used naive chunking, articles would blend together in the Vector DB (FAISS). 
+
+Instead, we structured our pipeline like this:
+
+1. **Title + Metadata injection**: Appending document metadata to *every* chunk so the embedding explicitly captures the parent context.
+2. **Paragraph-level splitting**: Only splitting on `\n\n` or header changes using advanced parser libraries like `unstructured`.
+
+> Ensure that your retrieval strategy returns not just the chunk, but the parent metadata to pass into your final LLM prompt.
+
+## 3. High-Speed Retrieval with FAISS
+Embedding generation isn't the bottleneck; searching is. While SaaS databases are fantastic, running **FAISS** locally on GPU instances can cut costs by over 90% while significantly reducing network latency. 
+
+When configuring FAISS for millions of news vectors:
+- Use `IndexIVFFlat` for high-speed approximate nearest neighbor (ANN) search.
+- Configure `nprobe` dynamically based on acceptable latency-recall trade-offs.
+- Utilize GPU batching for both ingestion and retrieval.
+
+## Future Thoughts
+Production RAG is evolving beyond simple similarity search. In upcoming articles, we'll explore **Graph-RAG** (incorporating Neo4j) and implementing **Agentic RAG using LangGraph** to dynamically self-correct failed queries.
+
+Stay tuned.
